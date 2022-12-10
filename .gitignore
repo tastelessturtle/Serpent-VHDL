@@ -5,3 +5,7 @@ __pycache__
 sim_build
 results.xml
 waveform.ghw
+waveview.gtkw
+
+# IDE ignores
+.vscode

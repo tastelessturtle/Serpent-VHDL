@@ -2,9 +2,117 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
+library work;
+use work.serpent_pkg.all;
+
 entity serpent is
+    port(
+        -- generic signals
+        clk : in std_logic;
+        rst : in std_logic;
+
+        -- control signals
+        start : in  std_logic;
+        busy  : out std_logic := '0';
+
+        -- data
+        plaintext  : in  std_logic_vector(127 downto 0);
+        userkey    : in  std_logic_vector(255 downto 0);
+        ciphertext : out std_logic_vector(127 downto 0)
+    );
 end entity serpent;
 
 architecture rtl of serpent is
+
+    -- FSM signals with counters
+    signal state, next_state   : state_type            := sRESET;
+    signal ks_cnt, next_ks_cnt : integer range 0 to 32 := 0;
+
+    -- keyschedule and intermediate
+    signal keyschedule  : keyschedule_type               := (others => (others => '0'));
+    signal intermediate : std_logic_vector(127 downto 0) := (others => '0'); 
+
 begin
+
+    -- FSM logic procedure
+    fsm_logic : process(state, start, ks_cnt) is
+    begin
+        case state is
+            -- reset signals are set before going to IDLE
+            when sRESET =>
+                busy       <= '1';
+                ciphertext <= (others => '0');
+                next_state <= sIDLE;
+
+            -- wait for start signal to start encryption
+            when sIDLE =>
+                -- state
+                busy       <= '0';
+                ciphertext <= (others => '0');
+
+                -- switch cases
+                if start = '1' then
+                    next_state <= sLOAD_DATA;
+                end if;
+
+            -- load the key and plaintext
+            when sLOAD_DATA =>
+                -- state
+                busy <= '1';
+                
+                -- load key and plaintext
+                intermediate    <= plaintext;
+                keyschedule(-2) <= userkey(127 downto 0);
+                keyschedule(-1) <= userkey(255 downto 128);
+
+                -- change state
+                next_state <= sKEYSCHEDULE;
+            
+            -- for each round generate a round key (32 times)
+            when sKEYSCHEDULE =>
+                -- TODO keyschedule
+
+
+                -- switch based on counter
+                if ks_cnt < 32 then
+                    next_ks_cnt <= ks_cnt + 1;
+                else
+                    next_ks_cnt <= 0;
+                    next_state <= sFINISHED;
+                end if;
+
+            -- put busy down with valid ciphertext
+            when sFINISHED =>
+                -- state
+                busy       <= '0';
+                ciphertext <= intermediate;
+
+                -- reset internal signals
+                intermediate <= (others => '0');
+                keyschedule  <= (others => (others => '0'));
+
+
+                -- go to next state immediately
+                next_state <= sIDLE;
+
+
+            -- fallback when unknown state is reacheds
+            when others =>
+                next_state <= sRESET;
+        end case;
+    end process fsm_logic;
+
+    -- FSM switching procedure including reset
+    fsm_switching : process(clk) is
+    begin
+        if rising_edge(clk) then
+            if rst = '1' then
+                state <= sRESET;
+            else
+                state  <= next_state;
+                ks_cnt <= next_ks_cnt;
+            end if;
+        end if;
+    end process fsm_switching;
+
 end architecture rtl;
