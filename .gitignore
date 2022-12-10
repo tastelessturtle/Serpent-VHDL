@@ -1,0 +1,7 @@
+# python ignores
+__pycache__
+
+# cocotb ignores
+sim_build
+results.xml
+waveform.ghw
