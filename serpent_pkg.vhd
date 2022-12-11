@@ -4,14 +4,24 @@ use ieee.numeric_std.all;
 
 package serpent_pkg is    
 
-    -- types
+    -- all states of finite state machine
     type state_type is (
-        sRESET, 
-        sIDLE,
-        sLOAD_DATA,
-        sKEYSCHEDULE,
-        sFINISHED
+        sRESET,         -- reset all signals and variables to default value
+        sIDLE,          -- wait for start signal to start encrypting
+        sLOAD_DATA,     -- load the data provided
+
+        sKEYSCHEDULE,   -- perform 32 round of keyschedule
+
+        sINIT_PERM,     -- initial permutation of the data
+        sADD_ROUND_KEY, -- add the round key
+        sSBOX,          -- apply SBOX to data
+        sLIN_TRANSFORM, -- apply linear transformation
+        sFINAL_PERM,    -- final permutation of the data
+
+        sFINISHED       -- output the result
     );
+
+    -- all different array types
     type keyschedule_type is array (integer range -2 to  32) of std_logic_vector(127 downto 0); -- to store all round keys
     type expansion_type   is array (integer range -8 to   3) of std_logic_vector( 31 downto 0); -- helpfull for key expansion
     type lookup_type      is array (integer range  0 to  15) of std_logic_vector(  3 downto 0);
@@ -131,31 +141,178 @@ package body serpent_pkg is
         data, round_key : std_logic_vector(127 downto 0)
     ) return std_logic_vector is
     begin
-        -- TODO
+        return data xor round_key;
     end function AddRoundKey;
 
     -- apply the normal SBOX
     function ApplySbox (
         data  : std_logic_vector(127 downto 0);
-        index : integer range 0 to 7) return std_logic_vector is
+        index : integer range 0 to 7
+    ) return std_logic_vector is
+        variable result : std_logic_vector(127 downto 0);
     begin
-        -- TODO
+        -- apply SBOX
+        for i in 0 to 31 loop
+            result(127-i*4 downto 124-i*4) := SBOX(index)(to_integer(unsigned(data(127-i*4 downto 124-i*4))));
+        end loop;
+
+        -- return the result
+        return result;
     end function ApplySbox;
 
     -- apply linear transformation on the data
     function LinearTransformation(
         data : std_logic_vector(127 downto 0)
     ) return std_logic_vector is
+        variable result : std_logic_vector(127 downto 0);
     begin
-        -- TODO
+        -- Linear Transform Table written out (to my knowledge no easy way to loop this other than cheating)
+        result(  0) := data( 16) xor data( 52) xor data( 56) xor data( 70) xor data( 83) xor data( 94) xor data(105);
+        result(  1) := data( 72) xor data(114) xor data(125);
+        result(  2) := data(  2) xor data(  9) xor data( 15) xor data( 30) xor data( 76) xor data( 84) xor data(126);
+        result(  3) := data( 36) xor data( 90) xor data(103);
+        result(  4) := data( 20) xor data( 56) xor data( 60) xor data( 74) xor data( 87) xor data( 98) xor data(109);
+        result(  5) := data(  1) xor data( 76) xor data(118);
+        result(  6) := data(  2) xor data(  6) xor data( 13) xor data( 19) xor data( 34) xor data( 80) xor data( 88);
+        result(  7) := data( 40) xor data( 94) xor data(107);
+        result(  8) := data( 24) xor data( 60) xor data( 64) xor data( 78) xor data( 91) xor data(102) xor data(113);
+        result(  9) := data(  5) xor data( 80) xor data(122);
+        result( 10) := data(  6) xor data( 10) xor data( 17) xor data( 23) xor data( 38) xor data( 84) xor data( 92);
+        result( 11) := data( 44) xor data( 98) xor data(111);
+        result( 12) := data( 28) xor data( 64) xor data( 68) xor data( 82) xor data( 95) xor data(106) xor data(117);
+        result( 13) := data(  9) xor data( 84) xor data(126);
+        result( 14) := data( 10) xor data( 14) xor data( 21) xor data( 27) xor data( 42) xor data( 88) xor data( 96);
+        result( 15) := data( 48) xor data(102) xor data(115);
+        result( 16) := data( 32) xor data( 68) xor data( 72) xor data( 86) xor data( 99) xor data(110) xor data(121);
+        result( 17) := data(  2) xor data( 13) xor data( 88);
+        result( 18) := data( 14) xor data( 18) xor data( 25) xor data( 31) xor data( 46) xor data( 92) xor data(100);
+        result( 19) := data( 52) xor data(106) xor data(119);
+        result( 20) := data( 36) xor data( 72) xor data( 76) xor data( 90) xor data(103) xor data(114) xor data(125);
+        result( 21) := data(  6) xor data( 17) xor data( 92);
+        result( 22) := data( 18) xor data( 22) xor data( 29) xor data( 35) xor data( 50) xor data( 96) xor data(104);
+        result( 23) := data( 56) xor data(110) xor data(123);
+        result( 24) := data(  1) xor data( 40) xor data( 76) xor data( 80) xor data( 94) xor data(107) xor data(118);
+        result( 25) := data( 10) xor data( 21) xor data( 96);
+        result( 26) := data( 22) xor data( 26) xor data( 33) xor data( 39) xor data( 54) xor data(100) xor data(108);
+        result( 27) := data( 60) xor data(114) xor data(127);
+        result( 28) := data(  5) xor data( 44) xor data( 80) xor data( 84) xor data( 98) xor data(111) xor data(122);
+        result( 29) := data( 14) xor data( 25) xor data(100);
+        result( 30) := data( 26) xor data( 30) xor data( 37) xor data( 43) xor data( 58) xor data(104) xor data(112);
+        result( 31) := data(  3) xor data(118);
+        result( 32) := data(  9) xor data( 48) xor data( 84) xor data( 88) xor data(102) xor data(115) xor data(126);
+        result( 33) := data( 18) xor data( 29) xor data(104);
+        result( 34) := data( 30) xor data( 34) xor data( 41) xor data( 47) xor data( 62) xor data(108) xor data(116);
+        result( 35) := data(  7) xor data(122);
+        result( 36) := data(  2) xor data( 13) xor data( 52) xor data( 88) xor data( 92) xor data(106) xor data(119);
+        result( 37) := data( 22) xor data( 33) xor data(108);
+        result( 38) := data( 34) xor data( 38) xor data( 45) xor data( 51) xor data( 66) xor data(112) xor data(120);
+        result( 39) := data( 11) xor data(126);
+        result( 40) := data(  6) xor data( 17) xor data( 56) xor data( 92) xor data( 96) xor data(110) xor data(123);
+        result( 41) := data( 26) xor data( 37) xor data(112);
+        result( 42) := data( 38) xor data( 42) xor data( 49) xor data( 55) xor data( 70) xor data(116) xor data(124);
+        result( 43) := data(  2) xor data( 15) xor data( 76);
+        result( 44) := data( 10) xor data( 21) xor data( 60) xor data( 96) xor data(100) xor data(114) xor data(127);
+        result( 45) := data( 30) xor data( 41) xor data(116);
+        result( 46) := data(  0) xor data( 42) xor data( 46) xor data( 53) xor data( 59) xor data( 74) xor data(120);
+        result( 47) := data(  6) xor data( 19) xor data( 80);
+        result( 48) := data(  3) xor data( 14) xor data( 25) xor data(100) xor data(104) xor data(118);
+        result( 49) := data( 34) xor data( 45) xor data(120);
+        result( 50) := data(  4) xor data( 46) xor data( 50) xor data( 57) xor data( 63) xor data( 78) xor data(124);
+        result( 51) := data( 10) xor data( 23) xor data( 84);
+        result( 52) := data(  7) xor data( 18) xor data( 29) xor data(104) xor data(108) xor data(122);
+        result( 53) := data( 38) xor data( 49) xor data(124);
+        result( 54) := data(  0) xor data(  8) xor data( 50) xor data( 54) xor data( 61) xor data( 67) xor data( 82);
+        result( 55) := data( 14) xor data( 27) xor data( 88);
+        result( 56) := data( 11) xor data( 22) xor data( 33) xor data(108) xor data(112) xor data(126);
+        result( 57) := data(  0) xor data( 42) xor data( 53);
+        result( 58) := data(  4) xor data( 12) xor data( 54) xor data( 58) xor data( 65) xor data( 71) xor data( 86);
+        result( 59) := data( 18) xor data( 31) xor data( 92);
+        result( 60) := data(  2) xor data( 15) xor data( 26) xor data( 37) xor data( 76) xor data(112) xor data(116);
+        result( 61) := data(  4) xor data( 46) xor data( 57);
+        result( 62) := data(  8) xor data( 16) xor data( 58) xor data( 62) xor data( 69) xor data( 75) xor data( 90);
+        result( 63) := data( 22) xor data( 35) xor data( 96);
+        result( 64) := data(  6) xor data( 19) xor data( 30) xor data( 41) xor data( 80) xor data(116) xor data(120);
+        result( 65) := data(  8) xor data( 50) xor data( 61);
+        result( 66) := data( 12) xor data( 20) xor data( 62) xor data( 66) xor data( 73) xor data( 79) xor data( 94);
+        result( 67) := data( 26) xor data( 39) xor data(100);
+        result( 68) := data( 10) xor data( 23) xor data( 34) xor data( 45) xor data( 84) xor data(120) xor data(124);
+        result( 69) := data( 12) xor data( 54) xor data( 65);
+        result( 70) := data( 16) xor data( 24) xor data( 66) xor data( 70) xor data( 77) xor data( 83) xor data( 98);
+        result( 71) := data( 30) xor data( 43) xor data(104);
+        result( 72) := data(  0) xor data( 14) xor data( 27) xor data( 38) xor data( 49) xor data( 88) xor data(124);
+        result( 73) := data( 16) xor data( 58) xor data( 69);
+        result( 74) := data( 20) xor data( 28) xor data( 70) xor data( 74) xor data( 81) xor data( 87) xor data(102);
+        result( 75) := data( 34) xor data( 47) xor data(108);
+        result( 76) := data(  0) xor data(  4) xor data( 18) xor data( 31) xor data( 42) xor data( 53) xor data( 92);
+        result( 77) := data( 20) xor data( 62) xor data( 73);
+        result( 78) := data( 24) xor data( 32) xor data( 74) xor data( 78) xor data( 85) xor data( 91) xor data(106);
+        result( 79) := data( 38) xor data( 51) xor data(112);
+        result( 80) := data(  4) xor data(  8) xor data( 22) xor data( 35) xor data( 46) xor data( 57) xor data( 96);
+        result( 81) := data( 24) xor data( 66) xor data( 77);
+        result( 82) := data( 28) xor data( 36) xor data( 78) xor data( 82) xor data( 89) xor data( 95) xor data(110);
+        result( 83) := data( 42) xor data( 55) xor data(116);
+        result( 84) := data(  8) xor data( 12) xor data( 26) xor data( 39) xor data( 50) xor data( 61) xor data(100);
+        result( 85) := data( 28) xor data( 70) xor data( 81);
+        result( 86) := data( 32) xor data( 40) xor data( 82) xor data( 86) xor data( 93) xor data( 99) xor data(114);
+        result( 87) := data( 46) xor data( 59) xor data(120);
+        result( 88) := data( 12) xor data( 16) xor data( 30) xor data( 43) xor data( 54) xor data( 65) xor data(104);
+        result( 89) := data( 32) xor data( 74) xor data( 85);
+        result( 90) := data( 36) xor data( 90) xor data(103) xor data(118);
+        result( 91) := data( 50) xor data( 63) xor data(124);
+        result( 92) := data( 16) xor data( 20) xor data( 34) xor data( 47) xor data( 58) xor data( 69) xor data(108);
+        result( 93) := data( 36) xor data( 78) xor data( 89);
+        result( 94) := data( 40) xor data( 94) xor data(107) xor data(122);
+        result( 95) := data(  0) xor data( 54) xor data( 67);
+        result( 96) := data( 20) xor data( 24) xor data( 38) xor data( 51) xor data( 62) xor data( 73) xor data(112);
+        result( 97) := data( 40) xor data( 82) xor data( 93);
+        result( 98) := data( 44) xor data( 98) xor data(111) xor data(126);
+        result( 99) := data(  4) xor data( 58) xor data( 71);
+        result(100) := data( 24) xor data( 28) xor data( 42) xor data( 55) xor data( 66) xor data( 77) xor data(116);
+        result(101) := data( 44) xor data( 86) xor data( 97);
+        result(102) := data(  2) xor data( 48) xor data(102) xor data(115);
+        result(103) := data(  8) xor data( 62) xor data( 75);
+        result(104) := data( 28) xor data( 32) xor data( 46) xor data( 59) xor data( 70) xor data( 81) xor data(120);
+        result(105) := data( 48) xor data( 90) xor data(101);
+        result(106) := data(  6) xor data( 52) xor data(106) xor data(119);
+        result(107) := data( 12) xor data( 66) xor data( 79);
+        result(108) := data( 32) xor data( 36) xor data( 50) xor data( 63) xor data( 74) xor data( 85) xor data(124);
+        result(109) := data( 52) xor data( 94) xor data(105);
+        result(110) := data( 10) xor data( 56) xor data(110) xor data(123);
+        result(111) := data( 16) xor data( 70) xor data( 83);
+        result(112) := data(  0) xor data( 36) xor data( 40) xor data( 54) xor data( 67) xor data( 78) xor data( 89);
+        result(113) := data( 56) xor data( 98) xor data(109);
+        result(114) := data( 14) xor data( 60) xor data(114) xor data(127);
+        result(115) := data( 20) xor data( 74) xor data( 87);
+        result(116) := data(  4) xor data( 40) xor data( 44) xor data( 58) xor data( 71) xor data( 82) xor data( 93);
+        result(117) := data( 60) xor data(102) xor data(113);
+        result(118) := data(  3) xor data( 18) xor data( 72) xor data(114) xor data(118) xor data(125);
+        result(119) := data( 24) xor data( 78) xor data( 91);
+        result(120) := data(  8) xor data( 44) xor data( 48) xor data( 62) xor data( 75) xor data( 86) xor data( 97);
+        result(121) := data( 64) xor data(106) xor data(117);
+        result(122) := data(  1) xor data(  7) xor data( 22) xor data( 76) xor data(118) xor data(122);
+        result(123) := data( 28) xor data( 82) xor data( 95);
+        result(124) := data( 12) xor data( 48) xor data( 52) xor data( 66) xor data( 79) xor data( 90) xor data(101);
+        result(125) := data( 68) xor data(110) xor data(121);
+        result(126) := data(  5) xor data( 11) xor data( 26) xor data( 80) xor data(122) xor data(126);
+        result(127) := data( 32) xor data( 86) xor data( 99); 
+        
+        -- return the result
+        return result;
     end function LinearTransformation;
 
     -- apply the final permuation on the data
     function FinalPermutation (
         data : std_logic_vector(127 downto 0)
     ) return std_logic_vector is
+        variable result : std_logic_vector(127 downto 0);
     begin
-        -- TODO
+        -- apply final permutation on data
+        for i in 0 to 127 loop
+            result(i) := data(FP(i));
+        end loop;
+        
+        -- return result
+        return result;
     end function FinalPermutation;
 
 end package body;

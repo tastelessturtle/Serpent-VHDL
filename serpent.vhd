@@ -27,6 +27,7 @@ architecture rtl of serpent is
     -- FSM signals with counters
     signal state, next_state   : state_type            := sRESET;
     signal ks_cnt, next_ks_cnt : integer range 0 to 32 := 0;
+    signal en_cnt, next_en_cnt : integer range 0 to 32 := 0;
 
     -- keyschedule and intermediate
     signal keyschedule  : keyschedule_type               := (others => (others => '0'));
@@ -34,7 +35,7 @@ architecture rtl of serpent is
 begin
 
     -- FSM logic procedure
-    fsm_logic : process(state, start, ks_cnt) is
+    fsm_logic : process(state, start, ks_cnt, en_cnt) is
         -- temporary variables
         variable temp : std_logic_vector(127 downto 0); -- used for temporary values between encryption
         variable expansion : keyschedule_type;          -- used for key expansion (since we do not expand on round keys)
@@ -82,8 +83,56 @@ begin
                     next_ks_cnt <= ks_cnt + 1;
                 else
                     next_ks_cnt <= 0;
-                    next_state  <= sFINISHED;
+                    next_state  <= sINIT_PERM;
                 end if;
+
+            when sINIT_PERM=>
+                -- apply initial permutation and go to next state
+                intermediate <= InitialPermutation(intermediate);
+                
+                -- change state
+                next_state <= sADD_ROUND_KEY;
+
+            when sADD_ROUND_KEY =>
+                -- add round key
+                intermediate <= AddRoundKey(intermediate, keyschedule(en_cnt));
+
+                -- change state
+                if en_cnt = 32 then
+                    next_en_cnt <= 0;
+                    next_state <= sFINAL_PERM;
+                else
+                    next_state <= sSBOX;
+                end if;
+                
+
+            when sSBOX =>
+                -- apply sbox
+                intermediate <= ApplySbox(intermediate, en_cnt mod 8);
+
+                -- change state
+                next_en_cnt <= en_cnt + 1;
+                if en_cnt < 31 then
+                    next_state <= sLIN_TRANSFORM;
+                else
+                    next_state <= sADD_ROUND_KEY;
+                end if;
+
+            when sLIN_TRANSFORM =>
+                -- apply linear transformation
+                intermediate <= LinearTransformation(intermediate);
+
+                -- change state
+                next_state <= sADD_ROUND_KEY;
+
+
+            when sFINAL_PERM =>
+                -- apply final permutation
+                intermediate <= FinalPermutation(intermediate);
+
+                -- change state
+                next_state <= sFINISHED;
+
 
             -- put busy down with valid ciphertext
             when sFINISHED =>
@@ -113,6 +162,7 @@ begin
             else
                 state  <= next_state;
                 ks_cnt <= next_ks_cnt;
+                en_cnt <= next_en_cnt;
             end if;
         end if;
     end process fsm_switching;
