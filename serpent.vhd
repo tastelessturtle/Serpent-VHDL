@@ -14,6 +14,7 @@ entity serpent is
         -- control signals
         start : in  std_logic;
         busy  : out std_logic := '0';
+        valid : out std_logic := '0';
 
         -- data
         plaintext  : in  std_logic_vector(127 downto 0);
@@ -43,15 +44,40 @@ begin
         case state is
             -- reset signals are set before going to IDLE
             when sRESET =>
+                -- external signals
                 busy       <= '1';
+                valid      <= '0';
                 ciphertext <= (others => '0');
+
+                -- internal signals
+                next_ks_cnt  <= 0;
+                next_en_cnt  <= 0;
+                keyschedule  <= (others => (others => '0'));
+                intermediate <= (others => '0');
+
+                -- variables
+                temp      := (others => '0');
+                expansion := (others => (others => '0'));
+
+                -- change state
                 next_state <= sIDLE;
 
             -- wait for start signal to start encryption
             when sIDLE =>
-                -- state
+                -- external signals
                 busy       <= '0';
+                valid      <= '0';
                 ciphertext <= (others => '0');
+
+                -- internal signals
+                next_ks_cnt  <= 0;
+                next_en_cnt  <= 0;
+                keyschedule  <= (others => (others => '0'));
+                intermediate <= (others => '0');
+
+                -- variables
+                temp      := (others => '0');
+                expansion := (others => (others => '0'));
 
                 -- switch cases
                 if start = '1' then
@@ -138,11 +164,8 @@ begin
             when sFINISHED =>
                 -- state
                 busy       <= '0';
+                valid      <= '1';
                 ciphertext <= intermediate;
-
-                -- reset internal signals
-                intermediate <= (others => '0');
-                keyschedule  <= (others => (others => '0'));
 
                 -- go to next state immediately
                 next_state <= sIDLE;
