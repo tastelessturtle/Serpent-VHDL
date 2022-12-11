@@ -40,3 +40,5 @@ async def test(dut):
     # wait until ancryption is finished
     await FallingEdge(dut.busy)
     await Timer(4*CLK_PERIOD, 'ns')
+
+    """NO assertion is tested. This testbench is purely visually used to verify the functions."""

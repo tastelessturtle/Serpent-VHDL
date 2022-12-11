@@ -1,29 +1,46 @@
+-----------------------------------------------------------------------------
+-- SERPENT cipher implementation in VHDL
+-----------------------------------------------------------------------------
+-- NAME:        serpent_pkg
+-----------------------------------------------------------------------------
+-- DESCRIPTION: This unit implements SERPENT functions. It also holds all
+--              the custom types and constants. All of the cryptographic
+--              functions are implemented here. It also holds the state
+--              descriptions.
+-----------------------------------------------------------------------------
+-- CHANGELOG:
+--   10-12-2022 Created the repo.
+--   11-12-2022 Finished first implementation.
+-----------------------------------------------------------------------------
+-- AUTHOR:      Erik Hagenaars
+-----------------------------------------------------------------------------
+-- LICENSE:     MIT License 
+-----------------------------------------------------------------------------
+-- Copyright (c) 2022 Erik Hagenaars
+-----------------------------------------------------------------------------
+library ieee;
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 package serpent_pkg is    
-
-    -- all states of finite state machine
+    -- all states of finite state machine with short description
     type state_type is (
         sRESET,         -- reset all signals and variables to default value
         sIDLE,          -- wait for start signal to start encrypting
         sLOAD_DATA,     -- load the data provided
-
         sKEYSCHEDULE,   -- perform 32 round of keyschedule
-
         sINIT_PERM,     -- initial permutation of the data
         sADD_ROUND_KEY, -- add the round key
         sSBOX,          -- apply SBOX to data
         sLIN_TRANSFORM, -- apply linear transformation
         sFINAL_PERM,    -- final permutation of the data
-
         sFINISHED       -- output the result
     );
 
     -- all different array types
-    type keyschedule_type is array (integer range -2 to  32) of std_logic_vector(127 downto 0); -- to store all round keys
-    type expansion_type   is array (integer range -8 to   3) of std_logic_vector( 31 downto 0); -- helpfull for key expansion
+    type keyschedule_type is array (integer range -2 to  32) of std_logic_vector(127 downto 0); -- including -2 for expansion
+    type expansion_type   is array (integer range -8 to   3) of std_logic_vector( 31 downto 0);
     type lookup_type      is array (integer range  0 to  15) of std_logic_vector(  3 downto 0);
     type sbox_type        is array (integer range  0 to   7) of lookup_type;
     type permutation_type is array (integer range  0 to 127) of integer range 0 to 127;
@@ -62,22 +79,35 @@ package serpent_pkg is
     );
 
     -- functions (ordered by time of apearance)
-    function ExpandKey (previous, current: std_logic_vector(127 downto 0); ks_round : integer range 0 to 32) return std_logic_vector;
-    function ApplySboxForKey (data : std_logic_vector(127 downto 0); index : integer range 0 to 7) return std_logic_vector;
-    function InitialPermutation (data : std_logic_vector(127 downto 0)) return std_logic_vector;
-    function AddRoundKey (data, round_key : std_logic_vector(127 downto 0)) return std_logic_vector;
-    function ApplySbox (data : std_logic_vector(127 downto 0); index : integer range 0 to 7) return std_logic_vector;
+    function ExpandKey(previous, current: std_logic_vector(127 downto 0); ks_round : integer range 0 to 32) return std_logic_vector;
+    function ApplySboxForKey(data : std_logic_vector(127 downto 0); index : integer range 0 to 7) return std_logic_vector;
+    function InitialPermutation(data : std_logic_vector(127 downto 0)) return std_logic_vector;
+    function AddRoundKey(data, round_key : std_logic_vector(127 downto 0)) return std_logic_vector;
+    function ApplySbox(data : std_logic_vector(127 downto 0); index : integer range 0 to 7) return std_logic_vector;
     function LinearTransformation(data : std_logic_vector(127 downto 0)) return std_logic_vector;
-    function FinalPermutation (data : std_logic_vector(127 downto 0)) return std_logic_vector;
-
+    function FinalPermutation(data : std_logic_vector(127 downto 0)) return std_logic_vector;
 end package serpent_pkg;
 
 package body serpent_pkg is
-
-    -- expand the next round key
-    function ExpandKey (
-        previous, current : std_logic_vector(127 downto 0); -- previous two round keys
-        ks_round          : integer range 0 to 32           -- round number to be calculated
+    -------------------------------------------------------------------------
+    -- ExpandKey function
+    -------------------------------------------------------------------------
+    -- ARGUMENTS
+    --   previous   Key expansion minus 2.
+    --   current    Key expansion minus 1.
+    --   ks_round   Current keyschedule round.
+    -------------------------------------------------------------------------
+    -- RETURNS
+    --   Returns the next key expansion.
+    -------------------------------------------------------------------------
+    -- The previous two key expansions and current round key is used to
+    -- calculate the next key expansion. Each expansion is split into 4 words
+    -- of 32 bits. It implements the following expansion:
+    --      w(i) = [ w(i-8) ^ w(i-5) ^ w(i-3) ^ w(i-1) ] <<< 11
+    -------------------------------------------------------------------------
+    function ExpandKey(
+        previous, current : std_logic_vector(127 downto 0);
+        ks_round          : integer range 0 to 32
     ) return std_logic_vector is
         -- easy array to expand the key on
         variable w : expansion_type := (
@@ -96,7 +126,21 @@ package body serpent_pkg is
         return w(3) & w(2) & w(1) & w(0);
     end function ExpandKey;
 
-    -- Apply the SBOX on round keys (which is different from normal SBOX during encryption)
+    -------------------------------------------------------------------------
+    -- SBOX function for keyschedule
+    -------------------------------------------------------------------------
+    -- ARGUMENTS
+    --   data   Input data for the SBOX.
+    --   index  SBOX index, which SBOX must be selected.
+    -------------------------------------------------------------------------
+    -- RETURNS
+    --   Returns output of the SBOX
+    -------------------------------------------------------------------------
+    -- The SBOX implementation for the keyschedule is different than the
+    -- implementation for the encryption SBOX. The key is split into 4 words
+    -- of 32 bits. Each bit of the word is used as input of the SBOX lookup
+    -- table. The result replaces the input bits.
+    -------------------------------------------------------------------------
     function ApplySboxForKey (
         data  : std_logic_vector(127 downto 0);
         index : integer range 0 to 7
@@ -121,7 +165,18 @@ package body serpent_pkg is
         return result;
     end function ApplySboxForKey;
 
-    -- Apply the initial Pemutation on the data
+    -------------------------------------------------------------------------
+    -- Initial Permutation function
+    -------------------------------------------------------------------------
+    -- ARGUMENTS
+    --   data   Input data for the permutation.
+    -------------------------------------------------------------------------
+    -- RETURNS
+    --   Returns permuted data.
+    -------------------------------------------------------------------------
+    -- The function permutates the data which changes the order according to
+    -- the Initial Permutation table IP.
+    -------------------------------------------------------------------------
     function InitialPermutation (
         data : std_logic_vector(127 downto 0)
     ) return std_logic_vector is
@@ -136,7 +191,19 @@ package body serpent_pkg is
         return result;
     end function InitialPermutation;
 
-    -- Add the round key on data
+    -------------------------------------------------------------------------
+    -- Add Round Key function
+    -------------------------------------------------------------------------
+    -- ARGUMENTS
+    --   data       Input data for the SBOX.
+    --   round_key  Round key to add to data.
+    -------------------------------------------------------------------------
+    -- RETURNS
+    --   Returns the xored product of the argument.
+    -------------------------------------------------------------------------
+    -- The function XORs the data with round_key data. Why create a complete
+    -- function for this? Just because.
+    -------------------------------------------------------------------------
     function AddRoundKey (
         data, round_key : std_logic_vector(127 downto 0)
     ) return std_logic_vector is
@@ -144,7 +211,21 @@ package body serpent_pkg is
         return data xor round_key;
     end function AddRoundKey;
 
-    -- apply the normal SBOX
+    -------------------------------------------------------------------------
+    -- SBOX function for encryption
+    -------------------------------------------------------------------------
+    -- ARGUMENTS
+    --   data   Input data for the SBOX.
+    --   index  SBOX index, which SBOX must be selected.
+    -------------------------------------------------------------------------
+    -- RETURNS
+    --   Returns output of the SBOX
+    -------------------------------------------------------------------------
+    -- The SBOX implementation for the encryption is different than the
+    -- implementation for the keyschedule SBOX. The data is grouped into 32
+    -- groups of 4 bits. These bits are all adjacent to each other. These
+    -- groups are the input for the SBOX.
+    -------------------------------------------------------------------------
     function ApplySbox (
         data  : std_logic_vector(127 downto 0);
         index : integer range 0 to 7
@@ -160,7 +241,21 @@ package body serpent_pkg is
         return result;
     end function ApplySbox;
 
-    -- apply linear transformation on the data
+    -------------------------------------------------------------------------
+    -- Linear Transformation function
+    -------------------------------------------------------------------------
+    -- ARGUMENTS
+    --   data   Input data for the Linear Transformation.
+    -------------------------------------------------------------------------
+    -- RETURNS
+    --   Returns transformed data.
+    -------------------------------------------------------------------------
+    -- The function applies a linear transformation to the data. Specific
+    -- bits are xored with eachoter and placed on specific places based on
+    -- a linear transformation table. Sometimes, 2, 3 or 7 input bits are
+    -- used. Because of this annoying reason, the linear function is written
+    -- for each bit.
+    -------------------------------------------------------------------------
     function LinearTransformation(
         data : std_logic_vector(127 downto 0)
     ) return std_logic_vector is
@@ -300,7 +395,18 @@ package body serpent_pkg is
         return result;
     end function LinearTransformation;
 
-    -- apply the final permuation on the data
+    -------------------------------------------------------------------------
+    -- Final Permutation function
+    -------------------------------------------------------------------------
+    -- ARGUMENTS
+    --   data   Input data for the permutation.
+    -------------------------------------------------------------------------
+    -- RETURNS
+    --   Returns permuted data
+    -------------------------------------------------------------------------
+    -- The function permutates the data which changes the order according to
+    -- the Final Permutation table FP.
+    -------------------------------------------------------------------------
     function FinalPermutation (
         data : std_logic_vector(127 downto 0)
     ) return std_logic_vector is
