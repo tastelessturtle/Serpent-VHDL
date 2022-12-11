@@ -9,3 +9,6 @@ waveview.gtkw
 
 # IDE ignores
 .vscode
+
+# personal reference files for development
+ref.txt

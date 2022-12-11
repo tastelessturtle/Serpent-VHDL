@@ -31,11 +31,13 @@ architecture rtl of serpent is
     -- keyschedule and intermediate
     signal keyschedule  : keyschedule_type               := (others => (others => '0'));
     signal intermediate : std_logic_vector(127 downto 0) := (others => '0'); 
-
 begin
 
     -- FSM logic procedure
     fsm_logic : process(state, start, ks_cnt) is
+        -- temporary variables
+        variable temp : std_logic_vector(127 downto 0); -- used for temporary values between encryption
+        variable expansion : keyschedule_type;          -- used for key expansion (since we do not expand on round keys)
     begin
         case state is
             -- reset signals are set before going to IDLE
@@ -61,24 +63,26 @@ begin
                 busy <= '1';
                 
                 -- load key and plaintext
-                intermediate    <= plaintext;
-                keyschedule(-2) <= userkey(127 downto 0);
-                keyschedule(-1) <= userkey(255 downto 128);
+                intermediate  <= plaintext;
+                expansion(-2) := userkey(127 downto 0);
+                expansion(-1) := userkey(255 downto 128);
 
                 -- change state
                 next_state <= sKEYSCHEDULE;
             
             -- for each round generate a round key (32 times)
             when sKEYSCHEDULE =>
-                -- TODO keyschedule
-
+                -- expand keys, SBOX
+                expansion(ks_cnt)   := ExpandKey(expansion(ks_cnt-2), expansion(ks_cnt-1), ks_cnt);
+                temp                := ApplySboxForKey(expansion(ks_cnt), (32+3-ks_cnt) mod 8);
+                keyschedule(ks_cnt) <= InitialPermutation(temp);
 
                 -- switch based on counter
                 if ks_cnt < 32 then
                     next_ks_cnt <= ks_cnt + 1;
                 else
                     next_ks_cnt <= 0;
-                    next_state <= sFINISHED;
+                    next_state  <= sFINISHED;
                 end if;
 
             -- put busy down with valid ciphertext
@@ -91,10 +95,8 @@ begin
                 intermediate <= (others => '0');
                 keyschedule  <= (others => (others => '0'));
 
-
                 -- go to next state immediately
                 next_state <= sIDLE;
-
 
             -- fallback when unknown state is reacheds
             when others =>
